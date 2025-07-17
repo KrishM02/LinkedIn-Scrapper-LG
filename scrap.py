@@ -1,5 +1,6 @@
 import time
 import csv
+import os
 from datetime import datetime
 import re
 from collections import Counter
@@ -19,6 +20,59 @@ except ImportError:
     print("[!] TextBlob not installed. Install with: pip install textblob")
     print("[!] Sentiment analysis will be skipped.")
     SENTIMENT_AVAILABLE = False
+
+# ---------------------------------------------------------------------------------------
+# Function to load existing post IDs from CSV file
+# ---------------------------------------------------------------------------------------
+def load_existing_post_ids(csv_file):
+    """Load existing post IDs from CSV file to avoid duplicates"""
+    existing_ids = set()
+    if os.path.exists(csv_file):
+        try:
+            with open(csv_file, 'r', encoding='utf-8') as file:
+                reader = csv.DictReader(file)
+                for row in reader:
+                    post_id = row.get('Post_ID', '').strip()
+                    if post_id:
+                        existing_ids.add(post_id)
+            print(f"[*] Loaded {len(existing_ids)} existing post IDs from {csv_file}")
+        except Exception as e:
+            print(f"[!] Error loading existing post IDs: {e}")
+    else:
+        print(f"[*] CSV file {csv_file} doesn't exist. Will create new file.")
+    return existing_ids
+
+# ---------------------------------------------------------------------------------------
+# Function to initialize CSV file with headers if it doesn't exist
+# ---------------------------------------------------------------------------------------
+def initialize_csv_file(csv_file):
+    """Initialize CSV file with headers if it doesn't exist"""
+    if not os.path.exists(csv_file):
+        print(f"[*] Creating new CSV file: {csv_file}")
+        with open(csv_file, mode='w', encoding='utf-8', newline='') as file:
+            writer = csv.writer(file, quoting=csv.QUOTE_ALL)
+            writer.writerow([
+                "Post_ID",
+                "Post_Author_Name",
+                "Post_Author_Profile",
+                "Post_Author_JobTitle",
+                "Post_Content",
+                "Post_Reactions",
+                "Sentiment",
+                "Sentiment_Score",
+                "Date_Collected"
+            ])
+    else:
+        print(f"[*] Using existing CSV file: {csv_file}")
+
+# ---------------------------------------------------------------------------------------
+# Function to append new post data to CSV file
+# ---------------------------------------------------------------------------------------
+def append_post_to_csv(csv_file, post_data):
+    """Append a single post to the CSV file"""
+    with open(csv_file, mode='a', encoding='utf-8', newline='') as file:
+        writer = csv.writer(file, quoting=csv.QUOTE_ALL)
+        writer.writerow(post_data)
 
 # ---------------------------------------------------------------------------------------
 # Function to load cookies from a Netscape-format cookies.txt file into Selenium's browser
@@ -318,10 +372,16 @@ def main():
     csv_file = "lgindia_posts_final.csv"
     sentiment_report_file = "lgindia_sentiment_report.csv"
     MAX_POSTS = 1000
-    MAX_SCROLL_ATTEMPTS = 800
+    MAX_SCROLL_ATTEMPTS = 80
     MAX_NO_NEW_POSTS_IN_A_ROW = 50
 
     # --------------------------------
+    # Initialize CSV file and load existing post IDs
+    # --------------------------------
+    initialize_csv_file(csv_file)
+    existing_post_ids = load_existing_post_ids(csv_file)
+    
+    # -------------------------------- 
     # Set up undetected Chrome driver
     # --------------------------------
     print("[*] Initializing undetected Chrome driver...") 
@@ -359,29 +419,17 @@ def main():
     browser.get(search_url)
     time.sleep(5)
 
-    print(f"[*] Creating CSV file: {csv_file}")
-    with open(csv_file, mode='w', encoding='utf-8', newline='') as file:
-        writer = csv.writer(file, quoting=csv.QUOTE_ALL)  # Quote all fields to handle special characters
-        writer.writerow([
-            "Post_ID",
-            "Post_Author_Name",
-            "Post_Author_Profile",
-            "Post_Author_JobTitle",
-            "Post_Content",
-            "Post_Reactions",
-            "Sentiment",
-            "Sentiment_Score",
-            "Date_Collected"
-        ])
-
-    unique_post_ids = set()
-    post_count = 0
+    new_posts_added = 0
+    total_posts_processed = 0
+    skipped_duplicates = 0
     LOAD_PAUSE_TIME = 4
     scroll_attempts = 0
     no_new_posts_count = 0
 
     print("[*] Starting to scroll and collect post data...")
-    while post_count < MAX_POSTS and scroll_attempts < MAX_SCROLL_ATTEMPTS and no_new_posts_count < MAX_NO_NEW_POSTS_IN_A_ROW:
+    print(f"[*] Will skip posts already in database. Currently have {len(existing_post_ids)} existing posts.")
+    
+    while new_posts_added < MAX_POSTS and scroll_attempts < MAX_SCROLL_ATTEMPTS and no_new_posts_count < MAX_NO_NEW_POSTS_IN_A_ROW:
         soup = bs(browser.page_source, "html.parser")
         post_wrappers = soup.find_all("div", {"class": "feed-shared-update-v2"})
         new_posts_in_this_pass = 0
@@ -397,10 +445,18 @@ def main():
                 data_urn = pw.get("data-urn", "")
                 if "urn:li:activity:" in data_urn:
                     post_id = data_urn.split("urn:li:activity:")[-1]
-            if not post_id or post_id in unique_post_ids:
-                continue    
+            if not post_id:
+                continue
 
-            unique_post_ids.add(post_id)
+            total_posts_processed += 1
+
+            # Check if post already exists
+            if post_id in existing_post_ids:
+                skipped_duplicates += 1
+                continue
+
+            # Add to existing_post_ids to avoid processing same post again in this session
+            existing_post_ids.add(post_id)
             new_posts_in_this_pass += 1
 
             author_name = None
@@ -463,27 +519,30 @@ def main():
 
             date_collected = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-            print(f"[+] Found new Post ID {post_id}. So far we have {post_count + 1} unique posts.")
+            # Prepare post data
+            post_data = [
+                post_id or "",
+                author_name or "",
+                author_profile_link or "",
+                author_jobtitle or "",
+                post_content or "",
+                post_reactions,
+                sentiment,
+                sentiment_score,
+                date_collected
+            ]
+
+            # Append to CSV file
+            append_post_to_csv(csv_file, post_data)
+
+            new_posts_added += 1
+            print(f"[+] Added NEW Post ID {post_id}. New posts added: {new_posts_added}")
             print(f"    Author: {author_name} | {author_profile_link}")
             print(f"    Content snippet: {post_content[:70]}{'...' if len(post_content or '')>70 else ''}")
             print(f"    Sentiment: {sentiment} ({sentiment_score})")
+            print(f"    Progress: {new_posts_added}/{MAX_POSTS} new posts | {skipped_duplicates} duplicates skipped")
 
-            with open(csv_file, mode='a', encoding='utf-8', newline='') as file:
-                writer = csv.writer(file, quoting=csv.QUOTE_ALL)  # Quote all fields to handle special characters
-                writer.writerow([
-                    post_id or "",
-                    author_name or "",
-                    author_profile_link or "",
-                    author_jobtitle or "",
-                    post_content or "",
-                    post_reactions,
-                    sentiment,
-                    sentiment_score,
-                    date_collected
-                ])
-
-            post_count += 1
-            if post_count >= MAX_POSTS:
+            if new_posts_added >= MAX_POSTS:
                 break
 
         if new_posts_in_this_pass == 0:
@@ -491,19 +550,27 @@ def main():
         else:
             no_new_posts_count = 0
 
-        if post_count < MAX_POSTS:
-            print("[*] Scrolling to load more posts...")
+        if new_posts_added < MAX_POSTS:
+            print(f"[*] Scrolling to load more posts... (Attempt {scroll_attempts + 1}/{MAX_SCROLL_ATTEMPTS})")
             browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(LOAD_PAUSE_TIME)
             scroll_attempts += 1
 
-    print(f"[*] Finished after collecting {post_count} unique posts.")
+    print(f"\n[*] Scraping completed!")
+    print(f"    - Total posts processed: {total_posts_processed}")
+    print(f"    - New posts added: {new_posts_added}")
+    print(f"    - Duplicates skipped: {skipped_duplicates}")
+    print(f"    - Total posts in database: {len(existing_post_ids)}")
     print("[*] Closing browser.")
     browser.quit()
-    print(f"[*] Data saved to {csv_file}")
+    print(f"[*] Data appended to {csv_file}")
     
     # Generate sentiment analysis report
-    generate_sentiment_report(csv_file, sentiment_report_file)
+    if new_posts_added > 0:
+        print("[*] Generating updated sentiment analysis report...")
+        generate_sentiment_report(csv_file, sentiment_report_file)
+    else:
+        print("[*] No new posts added, skipping sentiment report generation.")
 
 
 if __name__ == "__main__":
