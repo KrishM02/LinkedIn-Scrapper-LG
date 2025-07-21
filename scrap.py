@@ -139,66 +139,54 @@ def analyze_sentiment(text):
         print(f"[!] Error analyzing sentiment: {e}")
         return "neutral", 0.0
 
+# ---------------------------------------------------------------------------------------
+# Cleaner function to remove unecessary symbols and characters
+# ---------------------------------------------------------------------------------------
+
 def clean_post_content(content):
     if not content:
         return ""
     
-    # Replace line breaks with spaces
     content = content.replace('\n', ' ').replace('\r', ' ')
     
-    # Replace curly quotes with straight quotes - more comprehensive
     content = content.replace("'", "'").replace("'", "'")
     content = content.replace('"', '"').replace('"', '"')
     content = content.replace('`', "'").replace('´', "'")
     
-    # Remove emojis - much more comprehensive approach
-    # Main emoji blocks
-    content = re.sub(r'[\U0001F600-\U0001F64F]', '', content)  # Emoticons
-    content = re.sub(r'[\U0001F300-\U0001F5FF]', '', content)  # Misc symbols
-    content = re.sub(r'[\U0001F680-\U0001F6FF]', '', content)  # Transport
-    content = re.sub(r'[\U0001F1E0-\U0001F1FF]', '', content)  # Flags
-    content = re.sub(r'[\U0001F900-\U0001F9FF]', '', content)  # Supplemental symbols
-    content = re.sub(r'[\U0001FA70-\U0001FAFF]', '', content)  # Extended symbols
+    content = re.sub(r'[\U0001F600-\U0001F64F]', '', content)  
+    content = re.sub(r'[\U0001F300-\U0001F5FF]', '', content)  
+    content = re.sub(r'[\U0001F680-\U0001F6FF]', '', content)  
+    content = re.sub(r'[\U0001F1E0-\U0001F1FF]', '', content)  
+    content = re.sub(r'[\U0001F900-\U0001F9FF]', '', content)  
+    content = re.sub(r'[\U0001FA70-\U0001FAFF]', '', content)  
     
-    # Remove additional symbol ranges that include ✅, ❌, ☕, 🟢 etc.
-    content = re.sub(r'[\U00002600-\U000026FF]', '', content)  # Miscellaneous symbols (☕, ✅, ❌, etc.)
-    content = re.sub(r'[\U00002700-\U000027BF]', '', content)  # Dingbats
-    content = re.sub(r'[\U0001F780-\U0001F7FF]', '', content)  # Geometric shapes extended
-    content = re.sub(r'[\U0001F800-\U0001F8FF]', '', content)  # Supplemental arrows
+    content = re.sub(r'[\U00002600-\U000026FF]', '', content) 
+    content = re.sub(r'[\U00002700-\U000027BF]', '', content)  
+    content = re.sub(r'[\U0001F780-\U0001F7FF]', '', content)  
+    content = re.sub(r'[\U0001F800-\U0001F8FF]', '', content)  
     
-    # Remove specific problematic emojis that might not be caught
     content = re.sub(r'[❤️💙💚💛💜🖤🤍🤎❣️💕💞💓💗💖💘💝]', '', content)
     content = re.sub(r'[✅❌☕🟢🔴🟡🟠🟣🟤⚫⚪]', '', content)
     content = re.sub(r'[⭐🌟✨💫⚡🔥💯]', '', content)
     content = re.sub(r'[👍👎👏🙌🤝👋]', '', content)
     
-    # Remove mathematical and technical symbols that might appear
     content = re.sub(r'[≈≠≤≥±×÷√∞∆∑∏∫]', '', content)
     
-    # Remove additional punctuation symbols
     content = re.sub(r'[†‡§¶]', '', content)
     
-    # Remove control characters (but keep regular text)
     content = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', content)
     
-    # Remove markdown-style formatting markers when they're likely formatting
-    # Only remove * and _ when they appear to be markdown (paired or multiple)
-    content = re.sub(r'\*{1,3}([^*]*)\*{1,3}', r'\1', content)  # *text* or **text** or ***text***
-    content = re.sub(r'_{1,3}([^_]*)_{1,3}', r'\1', content)   # _text_ or __text__ or ___text___
+    content = re.sub(r'\*{1,3}([^*]*)\*{1,3}', r'\1', content)  
+    content = re.sub(r'_{1,3}([^_]*)_{1,3}', r'\1', content)   
     
-    # Remove other formatting characters
-    content = re.sub(r'[`~]', '', content)  # backticks and tildes
+    content = re.sub(r'[`~]', '', content)  
     
-    # Remove bullet point characters
     content = re.sub(r'[•◦▪▫‣]', '', content)
     
-    # Clean up hashtag formatting
     content = re.sub(r'hashtag\s*#', '#', content, flags=re.IGNORECASE)
     
-    # Normalize multiple spaces to single spaces
     content = re.sub(r'\s+', ' ', content)
     
-    # Remove leading/trailing whitespace
     content = content.strip()
     
     return content
